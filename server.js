@@ -16,7 +16,7 @@ const html = `<!DOCTYPE html>
     h1 { color: #333; margin-bottom: 12px; }
     p { color: #666; margin-bottom: 16px; }
     .badge { background: #4CAF50; color: white; padding: 6px 16px; border-radius: 20px; font-size: 14px; }
-    footer { margin-top: 24px; font-size: 13px; color: #999; direction: ltr; unicode-bidi: isolate; }
+    footer { margin-top: 24px; font-size: 13px; color: #999; }
   </style>
 </head>
 <body>
