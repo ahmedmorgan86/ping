@@ -146,8 +146,15 @@ def ping_once(host, timeout=2):
 
     try:
         # We use a short timeout in subprocess to prevent hanging
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                           timeout=timeout + 3, creationflags=_NO_WIN)
+        run_args = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "timeout": timeout + 3
+        }
+        if is_win:
+            run_args["creationflags"] = _NO_WIN
+
+        r = subprocess.run(cmd, **run_args)
 
         out = r.stdout.decode(errors="ignore")
         err = r.stderr.decode(errors="ignore")
@@ -437,7 +444,7 @@ class KPICard(tk.Frame):
 #  DEVICE TILE  — Redesigned for Network Nexus
 # ══════════════════════════════════════════════════════════════
 class DeviceTile(tk.Frame):
-    W, H = 220, 130
+    W, H = 200, 110
 
     # status -> (bg, border, fg, status_str)
     STATES = {
@@ -572,54 +579,91 @@ class DeviceTile(tk.Frame):
 
 
 # ══════════════════════════════════════════════════════════════
-#  SMOOTH BUTTON  — hover-animated button
+#  SMOOTH BUTTON  — Canvas-based with rounded corners
 # ══════════════════════════════════════════════════════════════
-class SmoothButton(tk.Label):
-    """A label-based button with hover color animation."""
+class SmoothButton(tk.Canvas):
+    """A canvas-based button with rounded corners and hover animations."""
 
     STYLES = {
-        "primary": (C["accent_bg"],  C["accent"],  C["accent_bg"],  C["accent2"]),
-        "success": (C["green_bg"],   C["green"],   C["green_bg"],   C["green"]),
-        "danger":  (C["red_bg"],     C["red"],     C["red_bg"],     C["red"]),
-        "ghost":   (C["surface"],    C["text2"],   C["surface2"],   C["text"]),
-        "default": (C["surface2"],   C["text2"],   C["overlay"],    C["text"]),
+        "primary": (C["accent_bg"],  C["accent"],  C["accent"],      C["accent2"]),
+        "success": (C["green_bg"],   C["green"],   C["green_bg"],    C["green"]),
+        "danger":  (C["red_bg"],     C["red"],     C["red_bg"],      C["red"]),
+        "ghost":   (C["surface"],    C["text2"],   C["surface2"],    C["text"]),
+        "default": (C["surface2"],   C["text2"],   C["overlay"],     C["text"]),
     }
 
     def __init__(self, parent, text, command, style="default",
-                 size=11, padx=16, pady=8, **kw):
+                 size=10, radius=6, padx=16, pady=8, **kw):
         bg, fg, hbg, hfg = self.STYLES.get(style, self.STYLES["default"])
-        super().__init__(parent, text=text,
-                         bg=bg, fg=fg,
-                         font=F(size, bold=True),
-                         padx=padx, pady=pady,
+
+        # Calculate dimensions
+        font_obj = F(size, bold=True)
+        # We need a temporary label to measure text
+        temp = tk.Label(parent, text=text, font=font_obj)
+        tw = temp.winfo_reqwidth()
+        th = temp.winfo_reqheight()
+
+        width = tw + (padx * 2)
+        height = th + (pady * 2)
+
+        super().__init__(parent, width=width, height=height,
+                         bg=parent["bg"], highlightthickness=0,
                          cursor="hand2", **kw)
-        self._bg  = bg;  self._fg  = fg
-        self._hbg = hbg; self._hfg = hfg
+
+        self._text = text.upper()
         self._cmd = command
+        self._font = font_obj
+        self._radius = radius
+        self._colors = {"bg": bg, "fg": fg, "hbg": hbg, "hfg": hfg}
         self._hovering = False
+        self._pressed = False
 
-        self.bind("<Enter>",    self._enter)
-        self.bind("<Leave>",    self._leave)
-        self.bind("<Button-1>", self._press)
-        self.bind("<ButtonRelease-1>", self._release)
+        self._draw()
 
-    def _enter(self, e=None):
+        self.bind("<Enter>",    self._on_enter)
+        self.bind("<Leave>",    self._on_leave)
+        self.bind("<Button-1>", self._on_press)
+        self.bind("<ButtonRelease-1>", self._on_release)
+
+    def _draw(self):
+        self.delete("all")
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        r = self._radius
+
+        curr_bg = self._colors["hbg"] if self._hovering else self._colors["bg"]
+        curr_fg = self._colors["hfg"] if self._hovering else self._colors["fg"]
+
+        if self._pressed:
+            curr_bg = C["overlay"]
+
+        # Draw rounded rectangle
+        self._create_rounded_rect(0, 0, w, h, r, fill=curr_bg, outline="")
+
+        # Draw text
+        self.create_text(w/2, h/2, text=self._text, fill=curr_fg, font=self._font)
+
+    def _create_rounded_rect(self, x1, y1, x2, y2, r, **kwargs):
+        points = [x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1, x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2, x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2, x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1]
+        return self.create_polygon(points, **kwargs, smooth=True)
+
+    def _on_enter(self, e=None):
         self._hovering = True
-        self.configure(bg=self._hbg, fg=self._hfg)
+        self._draw()
 
-    def _leave(self, e=None):
+    def _on_leave(self, e=None):
         self._hovering = False
-        self.configure(bg=self._bg, fg=self._fg)
+        self._pressed = False
+        self._draw()
 
-    def _press(self, e=None):
-        self.configure(bg=C["overlay"])
+    def _on_press(self, e=None):
+        self._pressed = True
+        self._draw()
 
-    def _release(self, e=None):
-        if self._hovering:
-            self.configure(bg=self._hbg)
+    def _on_release(self, e=None):
+        if self._pressed and self._hovering:
             if self._cmd: self._cmd()
-        else:
-            self.configure(bg=self._bg)
+        self._pressed = False
+        self._draw()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1093,10 +1137,10 @@ class PingMonitorApp(tk.Tk):
 
         # Mapped to the 4 summary cards in the image
         configs = [
-            ("TOTAL MONITORED", "total", C["accent"], "◈", "Infrastructure scale", "normal"),
-            ("ONLINE NODES",    "up",    C["green"],  "●", "Operational status", "circular"),
-            ("OFFLINE NODES",   "down",  C["red"],    "●", "Critical issues",     "normal"),
-            ("LATENCY AVG",     "rtt",   C["amber"],  "⟳", "Network performance", "sparkline"),
+            ("TOTAL MONITORED", "total", C["accent"], "◈", "INFRASTRUCTURE SCALE", "normal"),
+            ("ONLINE NODES",    "up",    C["green"],  "●", "OPERATIONAL STATUS", "circular"),
+            ("OFFLINE NODES",   "down",  C["red"],    "●", "CRITICAL ISSUES",     "normal"),
+            ("LATENCY AVG",     "rtt",   C["amber"],  "⟳", "NETWORK PERFORMANCE", "sparkline"),
         ]
 
         for label, key, color, icon, sub, kind in configs:
@@ -1131,7 +1175,6 @@ class PingMonitorApp(tk.Tk):
         actions.pack(side=tk.LEFT)
 
         SmoothButton(actions, "  ⊞ NODE MANAGEMENT ",  self._add_device,   "primary", 10, 15, 10).pack(side=tk.LEFT, padx=5)
-        SmoothButton(actions, "  ⚙ ALERT SETTINGS ",   lambda: None,        "ghost",   10, 15, 10).pack(side=tk.LEFT, padx=5)
         SmoothButton(actions, "  📁 EXPORT DATA ",      self._export_csv,    "ghost",   10, 15, 10).pack(side=tk.LEFT, padx=5)
         SmoothButton(actions, "  ✚ NEW GROUP ",       self._add_group,     "ghost",   10, 15, 10).pack(side=tk.LEFT, padx=5)
 
@@ -1169,9 +1212,9 @@ class PingMonitorApp(tk.Tk):
         self.tab_list  = tk.Frame(self.nb, bg=C["bg"])
         self.tab_stats = tk.Frame(self.nb, bg=C["bg"])
 
-        self.nb.add(self.tab_dash,  text="   Dashboard   ")
-        self.nb.add(self.tab_list,  text="   Host List   ")
-        self.nb.add(self.tab_stats, text="   Statistics   ")
+        self.nb.add(self.tab_dash,  text="   DASHBOARD   ")
+        self.nb.add(self.tab_list,  text="   HOST LIST   ")
+        self.nb.add(self.tab_stats, text="   STATISTICS   ")
 
         self._build_dash_tab()
         self._build_list_tab()
@@ -1263,13 +1306,13 @@ class PingMonitorApp(tk.Tk):
 
                 # Using a grid-like flow with Wrap behavior emulated by Frame management
                 row_f = None
-                tiles_per_row = 6
+                tiles_per_row = 7
                 for i, dev in enumerate(devs):
                     if i % tiles_per_row == 0:
                         row_f = tk.Frame(wrap, bg=C["bg"])
-                        row_f.pack(anchor="w", pady=(0, 15))
+                        row_f.pack(anchor="w", pady=(0, 10))
                     tile = DeviceTile(row_f, dev, self)
-                    tile.pack(side=tk.LEFT, padx=(0, 15))
+                    tile.pack(side=tk.LEFT, padx=(0, 10))
                     self._tiles[dev["ip"]] = tile
 
                     # Restore state
@@ -1326,7 +1369,7 @@ class PingMonitorApp(tk.Tk):
         hdr = tk.Frame(self.tab_stats, bg=C["surface"],
                        highlightbackground=C["border"], highlightthickness=1)
         hdr.pack(fill=tk.X, pady=(10, 0))
-        tk.Label(hdr, text="  Session Statistics",
+        tk.Label(hdr, text="  SESSION STATISTICS",
                  bg=C["surface"], fg=C["text"],
                  font=F(13, bold=True)).pack(side=tk.LEFT, padx=16, pady=12)
         SmoothButton(hdr, " Refresh ", self._refresh_stats,
