@@ -24,7 +24,7 @@ def create_hexagon_icon(size=256, color="#A78BFA", bg="#1B1E2B"):
     draw.polygon(points, outline=color, width=12)
 
     # Inner pulse dot (Network Nexus style)
-    ir = r // 2
+    ir = int(r // 2.5)
     draw.ellipse((cx-ir, cy-ir, cx+ir, cy+ir), fill=color)
 
     # Save as ICO (multiple sizes)

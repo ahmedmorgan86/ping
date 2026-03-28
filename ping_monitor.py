@@ -7,7 +7,7 @@ import subprocess
 _NO_WIN = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, font
 import threading, platform, csv, re, socket, math
 from datetime import datetime
 from collections import deque
@@ -36,13 +36,13 @@ C = {
     # Semantic
     "green":     "#00FF7F",   # Neon Green
     "green_bg":  "#1A2E2B",
-    "green_glow":"#00FF7F33",
+    "green_glow":"#1D332D",
     "red":       "#FF4B4B",   # Neon Red
     "red_bg":  "#2E1A1B",
-    "red_glow":  "#FF4B4B33",
+    "red_glow":  "#362223",
     "amber":     "#FBBF24",
     "amber_bg":  "#2E2410",
-    "amber_glow":"#FBBF2433",
+    "amber_glow":"#352D1C",
 
     # Text
     "text":      "#FFFFFF",
@@ -254,13 +254,13 @@ class PulseDot(tk.Canvas):
             gr = int(6 + pulse * 4)
             try:
                 self.create_oval(cx - gr, cy - gr, cx + gr, cy + gr,
-                                 fill=glow[:7] + "22", outline="", tags="glow")
+                                 fill=glow, outline="", tags="glow")
             except: pass
             # Middle ring
             mr = 5
             try:
                 self.create_oval(cx - mr, cy - mr, cx + mr, cy + mr,
-                                 fill=color + "44", outline="", tags="mid")
+                                 fill=glow, outline="", tags="mid")
             except: pass
 
         # Core dot
@@ -433,11 +433,14 @@ class KPICard(tk.Frame):
 
             for i, v in enumerate(h_list):
                 x = (i / (len(h_list) - 1)) * (w - 10) + 5
-                y = h - ((v - min_v) / rng * (h - 20) + 10)
+                y = h - ((v - min_v) / rng * (h - 25) + 10)
                 points.extend([x, y])
 
             if len(points) >= 4:
-                self.canvas.create_line(points, fill=self._color, width=2, smooth=True)
+                # Solid area fill (emulated with polygon)
+                fill_points = points + [points[-2], h, points[0], h]
+                self.canvas.create_polygon(fill_points, fill=C["bg2"], outline="", smooth=True)
+                self.canvas.create_line(points, fill=self._color, width=2.5, smooth=True)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -597,11 +600,11 @@ class SmoothButton(tk.Canvas):
         bg, fg, hbg, hfg = self.STYLES.get(style, self.STYLES["default"])
 
         # Calculate dimensions
-        font_obj = F(size, bold=True)
-        # We need a temporary label to measure text
-        temp = tk.Label(parent, text=text, font=font_obj)
-        tw = temp.winfo_reqwidth()
-        th = temp.winfo_reqheight()
+        f_name, f_size, f_weight = F(size, bold=True)
+        font_obj = font.Font(family=f_name, size=f_size, weight=f_weight)
+
+        tw = font_obj.measure(text.upper())
+        th = font_obj.metrics("linespace")
 
         width = tw + (padx * 2)
         height = th + (pady * 2)
@@ -1755,6 +1758,10 @@ class PingMonitorApp(tk.Tk):
             sent=s["sent"], received=s["received"],
             loss=f"{loss}%", avg_rtt=avg_rtt,
             rtt=f"{lat:.1f}" if ok and lat >= 0 else "TIMEOUT"))
+
+        # Limit log size to prevent memory bloat (e.g. 5000 entries)
+        if len(self._log) > 5000:
+            self._log.pop(0)
 
         ping_str = f" {lat:.0f} ms" if ok and lat >= 0 else " TIMEOUT"
         self._set_status(
